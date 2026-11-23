@@ -1,0 +1,8 @@
+Package: com.ycwl.MultiWindow
+Name: FrontBoardAppLauncher
+Version: 1.0.1
+Architecture: iphoneos-arm
+Description: An awesome application!
+Maintainer: 耗子哥
+Author: 耗子哥
+Section: Utilities

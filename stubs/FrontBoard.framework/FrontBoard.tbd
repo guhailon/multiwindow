@@ -1,0 +1,13 @@
+--- !tapi-tbd
+tbd-version:     4
+targets:         [ arm64-ios ]
+install-name:    '/System/Library/PrivateFrameworks/FrontBoard.framework/FrontBoard'
+current-version: 1
+exports:
+  - targets:         [ arm64-ios ]
+    symbols:         [ _FBSystemShellInitialize ]
+    objc-classes:    [ FBApplicationProcessLaunchTransaction, FBMutableProcessExecutionContext,
+                       FBProcessManager, FBSMutableSceneDefinition, FBSMutableSceneParameters,
+                       FBSSceneClientIdentity, FBSSceneIdentity, FBSWorkspaceScenesClient,
+                       FBSceneManager ]
+...

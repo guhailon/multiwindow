@@ -1,0 +1,9 @@
+Package: com.ycwl.mwfloat
+Name: 巨魔分屏-桌面悬浮窗
+Version: 1.0
+Architecture: iphoneos-arm64
+Description: 在系统桌面打开任意应用后，拖动屏幕右下角手柄即可把应用变成可移动缩放的悬浮小窗（画中画模式）。与巨魔分屏 App 设置里的"分屏浮窗模式"开关联动。
+Maintainer: MrDu
+Author: MrDu
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000)
