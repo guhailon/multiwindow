@@ -74,10 +74,11 @@ static FBScene *MWExistingSceneForBundleID(NSString *bundleID) {
                     if (!matched) MWLog(@"ASVC", @"hostLookup %@ S2 %@ dict %lu keys, no match", bundleID, ivarName, (unsigned long)[(NSDictionary *)dict count]);
                 }
             }
-            // S3: allScenes
+            // S3: allScenes (via performSelector — no visible declaration)
             if ([manager respondsToSelector:@selector(allScenes)]) {
                 NSUInteger n = 0;
-                for (id scene in [manager allScenes]) {
+                NSArray *allScenes = [manager performSelector:@selector(allScenes)];
+                for (id scene in allScenes) {
                     n++;
                     if ([scene respondsToSelector:@selector(identifier)]) {
                         NSString *sid = [scene identifier];
@@ -98,7 +99,8 @@ static FBScene *MWExistingSceneForBundleID(NSString *bundleID) {
                 if (idProvider && [idProvider respondsToSelector:@selector(identityForIdentifier:)]) {
                     id identity = [idProvider identityForIdentifier:fixedID];
                     if (identity) {
-                        id handle = [sbMgr existingSceneHandleForSceneIdentity:identity];
+                        // via performSelector — no visible declaration
+                        id handle = [sbMgr performSelector:@selector(existingSceneHandleForSceneIdentity:) withObject:identity];
                         if (handle && [handle respondsToSelector:@selector(scene)]) {
                             id scene = [handle scene];
                             if (scene) {
@@ -234,14 +236,16 @@ static FBScene *MWExistingSceneForBundleID(NSString *bundleID) {
     FBScene *existingScene = MWExistingSceneForBundleID(bundleID);
     if (existingScene) {
         @try {
-            self.sceneID = [existingScene respondsToSelector:@selector(identifier)] ? [existingScene identifier] : [NSString stringWithFormat:@"sceneID:%@-default", bundleID];
+            // via performSelector — 'identifier' is not on FBScene's visible interface
+            self.sceneID = [existingScene respondsToSelector:@selector(identifier)] ? [existingScene performSelector:@selector(identifier)] : [NSString stringWithFormat:@"sceneID:%@-default", bundleID];
             Class layerHostClass = NSClassFromString(@"_UISceneLayerHostContainerView");
             _UISceneLayerHostContainerView *layerHostView = nil;
             if (layerHostClass && [layerHostClass instancesRespondToSelector:@selector(initWithScene:debugDescription:)]) {
                 layerHostView = [[layerHostClass alloc] initWithScene:existingScene debugDescription:@"MultiWindow"];
             }
             if (!layerHostView && layerHostClass && [layerHostClass instancesRespondToSelector:@selector(initWithScene:)]) {
-                layerHostView = [[layerHostClass alloc] initWithScene:existingScene];
+                // via performSelector — initWithScene: has no visible declaration
+                layerHostView = [[layerHostClass alloc] performSelector:@selector(initWithScene:) withObject:existingScene];
             }
             if (layerHostView) {
                 Class contextClass = NSClassFromString(@"UIScenePresentationContext");
@@ -257,8 +261,9 @@ static FBScene *MWExistingSceneForBundleID(NSString *bundleID) {
                 // anything to show at all?
                 NSUInteger layerCount = 0;
                 @try {
-                    id lm = [existingScene respondsToSelector:@selector(layerManager)] ? [existingScene layerManager] : nil;
-                    NSArray *layers = (lm && [lm respondsToSelector:@selector(layers)]) ? [lm layers] : nil;
+                    // via performSelector — neither selector is on FBScene's visible interface
+                    id lm = [existingScene respondsToSelector:@selector(layerManager)] ? [existingScene performSelector:@selector(layerManager)] : nil;
+                    NSArray *layers = (lm && [lm respondsToSelector:@selector(layers)]) ? [lm performSelector:@selector(layers)] : nil;
                     layerCount = [layers count];
                 } @catch (NSException *e2) { (void)e2; }
                 // Foreground only — NEVER touch the main scene's frame or
@@ -266,8 +271,9 @@ static FBScene *MWExistingSceneForBundleID(NSString *bundleID) {
                 @try {
                     [existingScene updateSettingsWithBlock:^(UIMutableApplicationSceneSettings *settings) {
                         settings.foreground = YES;
+                        // KVC — 'backgrounded' is not on UIMutableApplicationSceneSettings' visible interface
                         if ([settings respondsToSelector:@selector(setBackgrounded:)]) {
-                            settings.backgrounded = NO;
+                            [settings setValue:@(NO) forKey:@"backgrounded"];
                         }
                     }];
                 } @catch (NSException *e3) { (void)e3; }
