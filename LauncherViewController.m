@@ -275,7 +275,15 @@ static BOOL NameHasChinese(NSString *s) {
                      animations:^{
         view.alpha = 1;
         view.frame = origFrame;
-    } completion:nil];
+    } completion:^(BOOL finished){
+        // FIX (1.0.4): the 0.4s open animation is done — the window is at
+        // its final size now. Push the intended frame to the scene again so
+        // a scene created mid-animation at the wrong size gets corrected.
+        // (No-op if the scene isn't created yet: appSceneView is nil then;
+        // viewDidAppear re-pushes again once it is.)
+        (void)finished;
+        [view refreshHostedSceneAfterResize];
+    }];
 }
 
 -(NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {

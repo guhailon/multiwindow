@@ -39,3 +39,4 @@ iOS 14.x is not yet supported. There is an issue in FrontBoard.
 - 1.0.1: hosted scene frame tracking fix (blank/clipped floating windows).
 - 1.0.2: diagnostic logging only (MWLOG to /var/mobile/Library/Logs/MultiWindow.log).
 - 1.0.3: in-app log viewer (查看日志 in the 设置 menu: 刷新/分享/清空).
+- 1.0.4: host existing scene for single-scene apps (QQ blank) + re-push size after appear (Settings half-width); swizzle drops now logged.

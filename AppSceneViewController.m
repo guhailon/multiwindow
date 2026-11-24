@@ -7,12 +7,128 @@
 #import "AppSceneViewController.h"
 #import "PiPManager.h"
 #import "MWLog.h"
+#import <objc/runtime.h>
+
+// FIX (1.0.4, experiment B): find an app's EXISTING main scene instead of
+// creating a fresh one. SeaDragon Split does this from SpringBoard
+// (KonbanXV's route: FBSceneManager -> _workspace -> _allScenesByID),
+// where the manager IS the system workspace. This app runs in its OWN
+// process, so its FBSceneManager only knows its own scenes — the lookup
+// will most likely return nil, and the MWLOG lines below prove it either
+// way. Every step is nil-guarded and @try-wrapped; failure falls through
+// to the old createScene path, never a crash.
+static FBScene *MWExistingSceneForBundleID(NSString *bundleID) {
+    if (!bundleID) return nil;
+    NSString *fixedID = [NSString stringWithFormat:@"sceneID:%@-default", bundleID];
+    Class fbSceneClass = NSClassFromString(@"FBScene");
+    @try {
+        Class managerClass = NSClassFromString(@"FBSceneManager");
+        id manager = nil;
+        if (managerClass && [managerClass respondsToSelector:@selector(sharedInstance)]) {
+            manager = [managerClass sharedInstance];
+        }
+        if (!manager) {
+            MWLog(@"ASVC", @"hostLookup %@ no manager", bundleID);
+        } else {
+            // S1: _workspace -> _allScenesByID (SpringBoard's layout)
+            Ivar wsIvar = class_getInstanceVariable([manager class], "_workspace");
+            id workspace = wsIvar ? object_getIvar(manager, wsIvar) : nil;
+            if (workspace) {
+                Ivar scIvar = class_getInstanceVariable(object_getClass(workspace), "_allScenesByID");
+                id dict = scIvar ? object_getIvar(workspace, scIvar) : nil;
+                if ([dict isKindOfClass:[NSDictionary class]]) {
+                    BOOL matched = NO;
+                    for (NSString *key in [(NSDictionary *)dict allKeys]) {
+                        if (![key isKindOfClass:[NSString class]]) continue;
+                        if ([key isEqualToString:fixedID] || [key rangeOfString:bundleID].location != NSNotFound) {
+                            id scene = [(NSDictionary *)dict objectForKey:key];
+                            if (scene && fbSceneClass && [scene isKindOfClass:fbSceneClass]) {
+                                MWLog(@"ASVC", @"hostLookup %@ FOUND via S1 workspace sid=%@", bundleID, key);
+                                return scene;
+                            }
+                        }
+                    }
+                    if (!matched) MWLog(@"ASVC", @"hostLookup %@ S1 workspace dict %lu keys, no match", bundleID, (unsigned long)[(NSDictionary *)dict count]);
+                } else {
+                    MWLog(@"ASVC", @"hostLookup %@ S1 no _allScenesByID dict", bundleID);
+                }
+            } else {
+                MWLog(@"ASVC", @"hostLookup %@ S1 no _workspace", bundleID);
+            }
+            // S2: manager _scenesByID / _scenes dicts
+            for (NSString *ivarName in @[@"_scenesByID", @"_scenes"]) {
+                Ivar iv = class_getInstanceVariable([manager class], [ivarName UTF8String]);
+                id dict = iv ? object_getIvar(manager, iv) : nil;
+                if ([dict isKindOfClass:[NSDictionary class]]) {
+                    BOOL matched = NO;
+                    for (NSString *key in [(NSDictionary *)dict allKeys]) {
+                        if (![key isKindOfClass:[NSString class]]) continue;
+                        if ([key isEqualToString:fixedID] || [key rangeOfString:bundleID].location != NSNotFound) {
+                            id scene = [(NSDictionary *)dict objectForKey:key];
+                            if (scene && fbSceneClass && [scene isKindOfClass:fbSceneClass]) {
+                                MWLog(@"ASVC", @"hostLookup %@ FOUND via S2 %@ sid=%@", bundleID, ivarName, key);
+                                return scene;
+                            }
+                        }
+                    }
+                    if (!matched) MWLog(@"ASVC", @"hostLookup %@ S2 %@ dict %lu keys, no match", bundleID, ivarName, (unsigned long)[(NSDictionary *)dict count]);
+                }
+            }
+            // S3: allScenes
+            if ([manager respondsToSelector:@selector(allScenes)]) {
+                NSUInteger n = 0;
+                for (id scene in [manager allScenes]) {
+                    n++;
+                    if ([scene respondsToSelector:@selector(identifier)]) {
+                        NSString *sid = [scene identifier];
+                        if (sid && ([sid isEqualToString:fixedID] || [sid rangeOfString:bundleID].location != NSNotFound)) {
+                            MWLog(@"ASVC", @"hostLookup %@ FOUND via S3 allScenes sid=%@", bundleID, sid);
+                            return scene;
+                        }
+                    }
+                }
+                MWLog(@"ASVC", @"hostLookup %@ S3 allScenes %lu scenes, no match", bundleID, (unsigned long)n);
+            } else {
+                MWLog(@"ASVC", @"hostLookup %@ S3 no allScenes", bundleID);
+            }
+            // S4: SBSceneManager existingSceneHandleForSceneIdentity:
+            Class sbMgr = NSClassFromString(@"SBSceneManager");
+            if (sbMgr && [sbMgr respondsToSelector:@selector(existingSceneHandleForSceneIdentity:)]) {
+                Class idProvider = NSClassFromString(@"SBSceneIdentityProvider");
+                if (idProvider && [idProvider respondsToSelector:@selector(identityForIdentifier:)]) {
+                    id identity = [idProvider identityForIdentifier:fixedID];
+                    if (identity) {
+                        id handle = [sbMgr existingSceneHandleForSceneIdentity:identity];
+                        if (handle && [handle respondsToSelector:@selector(scene)]) {
+                            id scene = [handle scene];
+                            if (scene) {
+                                MWLog(@"ASVC", @"hostLookup %@ FOUND via S4 existingSceneHandle", bundleID);
+                                return scene;
+                            }
+                        }
+                    }
+                }
+                MWLog(@"ASVC", @"hostLookup %@ S4 handle nil", bundleID);
+            } else {
+                MWLog(@"ASVC", @"hostLookup %@ S4 no SBSceneManager API", bundleID);
+            }
+        }
+    } @catch (NSException *e) {
+        MWLog(@"ASVC", @"hostLookup %@ exception %@ - fallback createScene", bundleID, e.reason);
+    }
+    MWLog(@"ASVC", @"hostLookup %@ NOT FOUND - fallback createScene", bundleID);
+    return nil;
+}
 
 @implementation AppSceneViewController {
     int resizeDebounceToken;
     CGRect currentFrame;
     bool isNativeWindow;
     NSUUID* identifier;
+    // FIX (1.0.4): YES when self.view is a layer host for the app's EXISTING
+    // main scene (no presenter, no created scene — never destroy/kill it,
+    // never push a frame to it).
+    bool hostedExistingScene;
 }
 
 /*
@@ -107,6 +223,61 @@
     if(!self.isAppRunning) {
         MWLog(@"ASVC", @"init %@ ABORT pid=%d not running", bundleID, self.pid);
         return self;
+    }
+    // FIX (1.0.4, experiment B): if the target is already running, try to
+    // host its EXISTING main scene (KonbanXV / SeaDragon Split v38 route)
+    // instead of creating a fresh scene the client ignores — QQ stays blank
+    // even cold-started, because it never attaches a window to a 2nd scene.
+    // Most likely the lookup finds nothing from this app's own process
+    // (see MWExistingSceneForBundleID); then we fall through to the old
+    // createScene path unchanged.
+    FBScene *existingScene = MWExistingSceneForBundleID(bundleID);
+    if (existingScene) {
+        @try {
+            self.sceneID = [existingScene respondsToSelector:@selector(identifier)] ? [existingScene identifier] : [NSString stringWithFormat:@"sceneID:%@-default", bundleID];
+            Class layerHostClass = NSClassFromString(@"_UISceneLayerHostContainerView");
+            _UISceneLayerHostContainerView *layerHostView = nil;
+            if (layerHostClass && [layerHostClass instancesRespondToSelector:@selector(initWithScene:debugDescription:)]) {
+                layerHostView = [[layerHostClass alloc] initWithScene:existingScene debugDescription:@"MultiWindow"];
+            }
+            if (!layerHostView && layerHostClass && [layerHostClass instancesRespondToSelector:@selector(initWithScene:)]) {
+                layerHostView = [[layerHostClass alloc] initWithScene:existingScene];
+            }
+            if (layerHostView) {
+                Class contextClass = NSClassFromString(@"UIScenePresentationContext");
+                if (contextClass && [contextClass instancesRespondToSelector:@selector(_initWithDefaultValues)]) {
+                    id context = [[contextClass alloc] _initWithDefaultValues];
+                    if (context) [layerHostView _setPresentationContext:context];
+                }
+                hostedExistingScene = YES;
+                self.view = layerHostView;
+                self.view.frame = CGRectMake(0, 0, frame.size.width, frame.size.height);
+                self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+                // Read-only layer census for the log: does this scene have
+                // anything to show at all?
+                NSUInteger layerCount = 0;
+                @try {
+                    id lm = [existingScene respondsToSelector:@selector(layerManager)] ? [existingScene layerManager] : nil;
+                    NSArray *layers = (lm && [lm respondsToSelector:@selector(layers)]) ? [lm layers] : nil;
+                    layerCount = [layers count];
+                } @catch (NSException *e2) { (void)e2; }
+                // Foreground only — NEVER touch the main scene's frame or
+                // insets (it is the app's full-screen main scene).
+                @try {
+                    [existingScene updateSettingsWithBlock:^(UIMutableApplicationSceneSettings *settings) {
+                        settings.foreground = YES;
+                        if ([settings respondsToSelector:@selector(setBackgrounded:)]) {
+                            settings.backgrounded = NO;
+                        }
+                    }];
+                } @catch (NSException *e3) { (void)e3; }
+                MWLog(@"ASVC", @"hostedExisting %@ sid=%@ layers=%lu view=%@", bundleID, self.sceneID, (unsigned long)layerCount, NSStringFromCGRect(self.view.frame));
+                return self;
+            }
+            MWLog(@"ASVC", @"hostedExisting %@ layer host nil - fallback createScene", bundleID);
+        } @catch (NSException *e) {
+            MWLog(@"ASVC", @"hostedExisting %@ exception %@ - fallback createScene", bundleID, e.reason);
+        }
     }
     [manager registerProcessForAuditToken:processHandle.auditToken];
     // NSString *identifier = [NSString stringWithFormat:@"sceneID:%@-%@", bundleID, @"default"];
@@ -207,6 +378,12 @@
             return;
         }
         self->currentFrame = frame;
+        if (self->hostedExistingScene) {
+            // FIX (1.0.4): a hosted EXISTING scene is the app's full-screen
+            // main scene — never push a frame to it; only the view moves.
+            MWLog(@"ASVC", @"resize hostedExisting skip push frame=%@", NSStringFromCGRect(frame));
+            return;
+        }
         // LOG (1.0.2): which frame is actually pushed to the scene settings?
         MWLog(@"ASVC", @"resize push frame=%@ orient=%ld", NSStringFromCGRect(frame), (long)self.view.window.windowScene.interfaceOrientation);
         [self.presenter.scene updateSettingsWithBlock:^(UIMutableApplicationSceneSettings *settings) {
@@ -226,6 +403,16 @@
     __weak typeof(self) weakSelf = self;
     NSString *key = [NSString stringWithFormat:@"AppSceneViewController:%p", self];
     [self.view.window.windowScene _unregisterSettingsDiffActionArrayForKey:key];
+    if (hostedExistingScene) {
+        // FIX (1.0.4): this is the app's own main scene — NEVER destroyScene,
+        // NEVER kill the pid, there is no presenter to deactivate. Just drop
+        // our layer host view and let the app keep running.
+        (void)weakSelf;
+        MWLog(@"ASVC", @"closeWindow hostedExisting %@ - scene left alive", self.sceneID);
+        [self.delegate appDidExit];
+        self.delegate = nil;
+        return;
+    }
     [[PrivClass(FBSceneManager) sharedInstance] destroyScene:key withTransitionContext:nil];
     if(self.presenter){
         [self.presenter deactivate];
@@ -248,6 +435,9 @@
 
 - (void)_performActionsForUIScene:(UIScene *)scene withUpdatedFBSScene:(id)fbsScene settingsDiff:(FBSSceneSettingsDiff *)diff fromSettings:(UIApplicationSceneSettings *)settings transitionContext:(id)context lifecycleActionType:(uint32_t)actionType {
     [self displayAppTerminatedTextIfNeeded];
+    // FIX (1.0.4): a hosted EXISTING scene is the app's main scene — there
+    // is no presenter.scene to push settings to; nothing to do here.
+    if (hostedExistingScene) return;
     if(!diff) return;
     UIMutableApplicationSceneSettings *baseSettings = [diff settingsByApplyingToMutableCopyOfSettings:settings];
     
@@ -292,6 +482,13 @@
     [super viewDidAppear:animated];
     // LOG (1.0.2): what frame does the presenter view REALLY end up with on screen?
     MWLog(@"ASVC", @"didAppear %@ view=%@ superview=%@", self.sceneID, NSStringFromCGRect(self.view.frame), NSStringFromCGRect(self.view.superview.frame));
+    // FIX (1.0.4): the scene may have been created at a wrong size and
+    // nothing ever re-pushed it (layoutSync never fires — bounds never
+    // change after a wrong creation). Push the intended frame again now
+    // that the scene is connected and on screen. For a hosted EXISTING
+    // scene this only re-sets the view frame (resize skips the push).
+    MWLog(@"ASVC", @"repush after appear frame=%@", NSStringFromCGRect(self->currentFrame));
+    [self resizeWindowWithFrame:self->currentFrame];
     [self.view.window.windowScene _registerSettingsDiffActionArray:@[self] forKey:[NSString stringWithFormat:@"AppSceneViewController:%p", self]];
 }
 

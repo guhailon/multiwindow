@@ -7,6 +7,7 @@
 
 #import "Hooks.h"
 #import "UIKitPrivate+MultitaskSupport.h"
+#import "MWLog.h"
 
 extern CGFloat UIHUDWindowLevel;
 
@@ -95,6 +96,10 @@ static BOOL shouldAllowNextUpdate = NO;
     if([changes boolForSetting:6] || (![changes.allSettings containsIndex:6] && [[otherChanges objectForSetting:3] intValue] == 0)) {
         NSLog(@"Allowing next update for diff %@", diff);
         [self hook_sceneID:sceneID updateWithSettingsDiff:diff transitionContext:context completion:completion];
+    } else {
+        // LOG (1.0.4): dropped updates used to be silent — log them so the
+        // log shows whether a size re-push got swallowed by this gate.
+        MWLog(@"HOOK", @"drop sceneID=%@ fg6=%@ deact3=%@", sceneID, [changes objectForSetting:6], [otherChanges objectForSetting:3]);
     }
 }
 @end
