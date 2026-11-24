@@ -1,5 +1,6 @@
 #import "DecoratedAppSceneView.h"
 #import "LauncherViewController.h"
+#import "MWLogViewerViewController.h"
 #import "ViewController.h"
 
 @interface ViewController ()
@@ -74,6 +75,11 @@
     UIAlertController *menu = [UIAlertController alertControllerWithTitle:@"设置"
                                                                  message:nil
                                                           preferredStyle:UIAlertControllerStyleActionSheet];
+    UIAlertAction *log = [UIAlertAction actionWithTitle:@"查看日志"
+                                                    style:UIAlertActionStyleDefault
+                                                  handler:^(UIAlertAction * _Nonnull action) {
+        [self showLogViewer];
+    }];
     UIAlertAction *about = [UIAlertAction actionWithTitle:@"关于"
                                                     style:UIAlertActionStyleDefault
                                                   handler:^(UIAlertAction * _Nonnull action) {
@@ -82,6 +88,7 @@
     UIAlertAction *cancel = [UIAlertAction actionWithTitle:@"取消"
                                                      style:UIAlertActionStyleCancel
                                                    handler:nil];
+    [menu addAction:log];
     [menu addAction:about];
     [menu addAction:cancel];
     if ([sender isKindOfClass:UIBarButtonItem.class]) {
@@ -91,6 +98,13 @@
         menu.popoverPresentationController.sourceRect = ((UIView *)sender).bounds;
     }
     [self presentViewController:menu animated:YES completion:nil];
+}
+
+- (void)showLogViewer {
+    MWLogViewerViewController *vc = [MWLogViewerViewController new];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
+    nav.modalPresentationStyle = UIModalPresentationFullScreen;
+    [self presentViewController:nav animated:YES completion:nil];
 }
 
 - (void)showAbout {

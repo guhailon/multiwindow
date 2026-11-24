@@ -34,3 +34,8 @@ iOS 14.x is not yet supported. There is an issue in FrontBoard.
 - Keyboard doesn't work when windowed on top of SpringBoard yet
 - Re-opening an app after closing may crash
 - Single-scene apps may not work yet. You may see empty window in such cases.
+
+## Version notes (GuHaiLong fixes)
+- 1.0.1: hosted scene frame tracking fix (blank/clipped floating windows).
+- 1.0.2: diagnostic logging only (MWLOG to /var/mobile/Library/Logs/MultiWindow.log).
+- 1.0.3: in-app log viewer (查看日志 in the 设置 menu: 刷新/分享/清空).

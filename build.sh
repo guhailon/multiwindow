@@ -38,6 +38,7 @@ SOURCES=(
     DecoratedFloatingView.m
     Hooks.m
     LauncherViewController.m
+    MWLogViewerViewController.m
     PiPManager.m
     ResizeHandleView.m
     SceneDelegate.m
