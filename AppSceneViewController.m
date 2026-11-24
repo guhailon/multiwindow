@@ -6,6 +6,7 @@
 //
 #import "AppSceneViewController.h"
 #import "PiPManager.h"
+#import "MWLog.h"
 
 @implementation AppSceneViewController {
     int resizeDebounceToken;
@@ -103,7 +104,10 @@
     // At this point, the process is spawned and we're ready to create a scene to render in our app
     RBSProcessHandle* processHandle = [PrivClass(RBSProcessHandle) handleForPredicate:predicate error:nil];
     self.pid = processHandle.pid;
-    if(!self.isAppRunning) return self;
+    if(!self.isAppRunning) {
+        MWLog(@"ASVC", @"init %@ ABORT pid=%d not running", bundleID, self.pid);
+        return self;
+    }
     [manager registerProcessForAuditToken:processHandle.auditToken];
     // NSString *identifier = [NSString stringWithFormat:@"sceneID:%@-%@", bundleID, @"default"];
     self.sceneID = [NSString stringWithFormat:@"sceneID:%@-%@", bundleID, @"default"];
@@ -148,6 +152,8 @@
     settings.statusBarDisabled = !isNativeWindow;
     //settings.previewMaximumSize =
     //settings.deviceOrientationEventsEnabled = YES;
+    // LOG (1.0.2): what frame did the scene actually get, and in which orientation?
+    MWLog(@"ASVC", @"init %@ inFrame=%@ orient=%ld settings.frame=%@ pid=%d", bundleID, NSStringFromCGRect(frame), (long)settings.interfaceOrientation, NSStringFromCGRect(settings.frame), self.pid);
     self.settings = settings;
     parameters.settings = settings;
     
@@ -174,6 +180,8 @@
     // intended content frame now and let it track the container.
     self.view.frame = CGRectMake(0, 0, frame.size.width, frame.size.height);
     self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    // LOG (1.0.2): what frame does the presenter view end up with right after activate?
+    MWLog(@"ASVC", @"activated %@ presenterView=%@ view=%@", bundleID, NSStringFromCGRect(self.presenter.presentationView.frame), NSStringFromCGRect(self.view.frame));
     return self;
 }
 
@@ -184,7 +192,12 @@
     // scene size immediately — the settings update below is debounced, but
     // the view was never resized at all, so a shrunk window kept showing a
     // stale-sized scene clipped to a strip.
-    if (frame.size.width < 1 || frame.size.height < 1) return;
+    if (frame.size.width < 1 || frame.size.height < 1) {
+        MWLog(@"ASVC", @"resize SKIP zero frame=%@", NSStringFromCGRect(frame));
+        return;
+    }
+    // LOG (1.0.2): what size came in, and what is the presenter view now?
+    MWLog(@"ASVC", @"resize in=%@ viewBefore=%@", NSStringFromCGRect(frame), NSStringFromCGRect(self.view.frame));
     self.view.frame = CGRectMake(0, 0, frame.size.width, frame.size.height);
     __block int currentDebounceToken = self->resizeDebounceToken + 1;
     self->resizeDebounceToken = currentDebounceToken;
@@ -194,6 +207,8 @@
             return;
         }
         self->currentFrame = frame;
+        // LOG (1.0.2): which frame is actually pushed to the scene settings?
+        MWLog(@"ASVC", @"resize push frame=%@ orient=%ld", NSStringFromCGRect(frame), (long)self.view.window.windowScene.interfaceOrientation);
         [self.presenter.scene updateSettingsWithBlock:^(UIMutableApplicationSceneSettings *settings) {
             settings.deviceOrientation = UIDevice.currentDevice.orientation;
             settings.interfaceOrientation = self.view.window.windowScene.interfaceOrientation;
@@ -275,6 +290,8 @@
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    // LOG (1.0.2): what frame does the presenter view REALLY end up with on screen?
+    MWLog(@"ASVC", @"didAppear %@ view=%@ superview=%@", self.sceneID, NSStringFromCGRect(self.view.frame), NSStringFromCGRect(self.view.superview.frame));
     [self.view.window.windowScene _registerSettingsDiffActionArray:@[self] forKey:[NSString stringWithFormat:@"AppSceneViewController:%p", self]];
 }
 

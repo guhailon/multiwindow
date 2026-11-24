@@ -3,6 +3,13 @@ Reference usage of FrontBoard &amp; UIKit private API to display external app sc
 
 This app implements multitasking.
 
+## 1.0.2 (2026-11-24)
+Diagnostic logging only, no behavior change. 1.0.1 still showed Settings
+squeezed into the left ~55% on device, so this build logs every frame the
+scene is created at, every frame the presenter view ends up with, and every
+re-sync (app path) plus the tweak window geometry (tweak path) to NSLog
+(tag MWLOG) and /var/mobile/Library/Logs/MultiWindow.log.
+
 ## 1.0.1 fix (2026-11-23)
 Floating windows showed the hosted app as a clipped strip (Settings) or
 fully blank (QQ): the scene was created at the transient contentView size

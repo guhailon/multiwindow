@@ -3,6 +3,7 @@
 #import "MWSceneHelper.h"
 #import "MWBackgrounderManager.h"
 #import "MWPassthroughWindow.h"
+#import "../MWLog.h"
 
 #define SCALE_MODE_PLIST @"/var/mobile/Library/Preferences/com.milkyway.reborn.scalemode.plist"
 
@@ -144,6 +145,10 @@
     } else {
         self.frame = CGRectMake(0, 100, cvFrame.size.height * 0.5, cvFrame.size.width * 0.5 + titleH);
     }
+    // LOG (1.0.2): note the 0.5x sizing — the tweak window is built at half
+    // the scene frame. Log what went in so we can tell whether this path
+    // is even rendering the window Lee photographs.
+    MWLog(@"MWWV", @"init %@ cvFrame=%@ orient=%lu frame=%@", identifier, NSStringFromCGRect(cvFrame), (unsigned long)[self contentViewOrientation], NSStringFromCGRect(self.frame));
 
     return self;
 }
@@ -192,6 +197,7 @@
 
 - (void)updateContentViewFrame:(CGRect)frame {
     if (!self.scene) return;
+    MWLog(@"MWWV", @"pushFrame %@ %@", self.bundleIdentifier, NSStringFromCGRect(frame));
     @try {
         id mutableSettings = nil;
         if ([self.scene respondsToSelector:@selector(mutableSettings)])
@@ -234,6 +240,13 @@
 
     CGRect mainFrame = self.mainView.frame;
 
+    // LOG (1.0.2): throttled — layoutSubviews fires constantly during
+    // animation/drag; log only the first pass and real scale changes.
+    static CGFloat mwLastSX = -1, mwLastSY = -1;
+    static int mwLastScaleMode = -1;
+    static BOOL mwFirstLayout = YES;
+    CGFloat scaleX = 1, scaleY = 1;
+
     if (scaleMode) {
         self.contentView.transform = CGAffineTransformIdentity;
         CGRect cvf = self.contentView.frame;
@@ -243,7 +256,6 @@
         else
             [self updateContentViewFrame:CGRectMake(0, 0, mainFrame.size.height, mainFrame.size.width)];
     } else {
-        CGFloat scaleX, scaleY;
         if (orientation == 1) {
             scaleX = mainFrame.size.width / shortSide;
             scaleY = mainFrame.size.height / longSide;
@@ -260,6 +272,11 @@
         else
             self.contentView.frame = CGRectMake(cvFrame.origin.x, cvFrame.origin.y, cvFrame.size.height, cvFrame.size.width);
     }
+    if (mwFirstLayout || fabs(scaleX - mwLastSX) > 0.01 || fabs(scaleY - mwLastSY) > 0.01 || (int)scaleMode != mwLastScaleMode) {
+        mwFirstLayout = NO;
+        mwLastSX = scaleX; mwLastSY = scaleY; mwLastScaleMode = (int)scaleMode;
+        MWLog(@"MWWV", @"layout %@ scaleMode=%d scale=%.2fx%.2f main=%@ content=%@", self.bundleIdentifier, (int)scaleMode, scaleX, scaleY, NSStringFromCGRect(mainFrame), NSStringFromCGRect(self.contentView.frame));
+    }
 }
 
 #pragma mark - Layer Updates
@@ -272,15 +289,26 @@
         [sub removeFromSuperview];
     }
 
-    if (![self.scene respondsToSelector:@selector(layerManager)]) return;
+    if (![self.scene respondsToSelector:@selector(layerManager)]) {
+        MWLog(@"MWWV", @"updateLayers %@ NO layerManager", self.bundleIdentifier);
+        return;
+    }
     id layerManager = [self.scene layerManager];
     NSArray *layers = [layerManager layers];
-    if (!layers) return;
-    if (![self.contentView respondsToSelector:@selector(_createHostViewForLayer:)]) return;
+    if (!layers) {
+        MWLog(@"MWWV", @"updateLayers %@ layers=nil", self.bundleIdentifier);
+        return;
+    }
+    if (![self.contentView respondsToSelector:@selector(_createHostViewForLayer:)]) {
+        MWLog(@"MWWV", @"updateLayers %@ NO _createHostViewForLayer layers=%lu", self.bundleIdentifier, (unsigned long)[layers count]);
+        return;
+    }
 
+    int hostCount = 0;
     for (id layer in layers) {
         UIView *hostView = [(id)self.contentView _createHostViewForLayer:layer];
         if (!hostView) continue;
+        hostCount++;
 
         NSString *className = NSStringFromClass([hostView class]);
 
@@ -302,6 +330,7 @@
             [self.contentView addSubview:hostView];
         }
     }
+    MWLog(@"MWWV", @"updateLayers %@ layers=%lu hostViews=%d", self.bundleIdentifier, (unsigned long)[layers count], hostCount);
     [self layoutSubviews];
 }
 

@@ -1,4 +1,5 @@
 #import "FloatDragController.h"
+#import "MWLog.h"
 #import <objc/runtime.h>
 
 @interface FloatDragController ()
@@ -135,8 +136,13 @@
     [self syncFrame];
     NSLog(@"[MW-Float] pan delta=%@ newFrame=%@", NSStringFromCGPoint(delta), NSStringFromCGRect(f));
 
+    // LOG (1.0.2): did the drag-resize reach the scene re-sync, or is the
+    // target something else entirely?
     if ([target isKindOfClass:NSClassFromString(@"DecoratedAppSceneView")]) {
+        MWLog(@"FDC", @"dragResize target=%@ frame=%@", NSStringFromClass([target class]), NSStringFromCGRect(f));
         [target performSelector:@selector(refreshHostedSceneAfterResize)];
+    } else {
+        MWLog(@"FDC", @"dragResize SKIP target=%@ frame=%@", NSStringFromClass([target class]), NSStringFromCGRect(f));
     }
 }
 

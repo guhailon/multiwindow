@@ -5,6 +5,7 @@
 #import "MWBackgrounderManager.h"
 #import "MWThemeManager.h"
 #import "MWFloatGrabber.h"
+#import "../MWLog.h"
 
 #define SCALE_MODE_PLIST @"/var/mobile/Library/Preferences/com.ycwl.mwfloat.scalemode.plist"
 #define MW_LOG(fmt, ...) NSLog(@"[MWFloat] " fmt, ##__VA_ARGS__)
@@ -156,6 +157,8 @@ void mw_createWindowForApp(NSString *bundleID, NSString *sceneID) {
                                                                        scene:scene];
         // 标题：右侧悬浮小窗初始位置
         windowView.frame = CGRectMake([UIScreen mainScreen].bounds.size.width - 340, 90, 320, 460);
+        // LOG (1.0.2): did the tweak path create a window at all, and at what size?
+        MWLog(@"MWTW", @"createWindow %@ content=%@ window=%@", bundleID, NSStringFromCGRect(contentView.frame), NSStringFromCGRect(windowView.frame));
 
         Class sbAppCtrl = NSClassFromString(@"SBApplicationController");
         SBApplication *app = [[sbAppCtrl sharedInstance] applicationWithBundleIdentifier:bundleID];

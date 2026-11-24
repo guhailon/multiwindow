@@ -1,4 +1,5 @@
 #import "MWSceneHelper.h"
+#import "../MWLog.h"
 
 @implementation MWSceneHelper
 
@@ -62,7 +63,10 @@
                 if (sid && [sid containsString:identifier]) {
                     if ([handle respondsToSelector:@selector(scene)]) {
                         id scene = [handle scene];
-                        if (scene) return scene;
+                        if (scene) {
+                            MWLog(@"MWSH", @"getFBScene %@ via handle map %@", identifier, ivarName);
+                            return scene;
+                        }
                     }
                 }
             }
@@ -74,8 +78,10 @@
         for (id scene in [manager performSelector:@selector(allScenes)]) {
             if ([scene respondsToSelector:@selector(identifier)]) {
                 NSString *sid = [scene identifier];
-                if (sid && [sid containsString:identifier])
+                if (sid && [sid containsString:identifier]) {
+                    MWLog(@"MWSH", @"getFBScene %@ via allScenes sid=%@", identifier, sid);
                     return scene;
+                }
             }
         }
     }
@@ -96,13 +102,18 @@
                         // Check if it's an FBScene
                         if ([candidate respondsToSelector:@selector(layerManager)] ||
                             [candidate respondsToSelector:@selector(identifier)]) {
+                            MWLog(@"MWSH", @"getFBScene %@ via deep ivar scan key=%@", identifier, key);
                             free(ivars);
                             return candidate;
                         }
                         // Check if it's an SBSceneHandle
                         if ([candidate respondsToSelector:@selector(scene)]) {
                             id scene = [candidate scene];
-                            if (scene) { free(ivars); return scene; }
+                            if (scene) {
+                                MWLog(@"MWSH", @"getFBScene %@ via deep ivar scan handle key=%@", identifier, key);
+                                free(ivars);
+                                return scene;
+                            }
                         }
                     }
                 }
@@ -119,22 +130,30 @@
             id identity = [identityProvider performSelector:@selector(identityForIdentifier:) withObject:identifier];
             if (identity) {
                 id handle = [sbSceneMgr performSelector:@selector(existingSceneHandleForSceneIdentity:) withObject:identity];
-                if (handle && [handle respondsToSelector:@selector(scene)])
+                if (handle && [handle respondsToSelector:@selector(scene)]) {
+                    MWLog(@"MWSH", @"getFBScene %@ via existingSceneHandle", identifier);
                     return [handle scene];
+                }
             }
         }
     }
 
+    MWLog(@"MWSH", @"getFBScene %@ NOT FOUND", identifier);
     return nil;
 }
 
 + (FBScene *)_findScene:(NSString *)identifier inDict:(NSDictionary *)dict {
     if (!dict || ![dict count]) return nil;
     id scene = dict[identifier];
-    if (scene) return scene;
+    if (scene) {
+        MWLog(@"MWSH", @"findScene %@ via exact key", identifier);
+        return scene;
+    }
     for (NSString *key in [dict allKeys]) {
-        if ([key containsString:identifier])
+        if ([key containsString:identifier]) {
+            MWLog(@"MWSH", @"findScene %@ via key %@", identifier, key);
             return dict[key];
+        }
     }
     return nil;
 }
@@ -143,7 +162,10 @@
 
 + (UIView *)createLayerHostView:(NSString *)identifier {
     FBScene *scene = [self getFBScene:identifier];
-    if (!scene) return nil;
+    if (!scene) {
+        MWLog(@"MWSH", @"createHost %@ NO scene", identifier);
+        return nil;
+    }
 
     Class containerClass = NSClassFromString(@"_UISceneLayerHostContainerView");
     if (containerClass) {
@@ -155,10 +177,12 @@
         else if ([containerClass instancesRespondToSelector:@selector(initWithScene:)])
             container = [[containerClass alloc] initWithScene:scene];
         if (container) {
+            NSUInteger layerCount = 0;
             id containerScene = [container scene];
             if (containerScene && [containerScene respondsToSelector:@selector(layerManager)]) {
                 id layerManager = [containerScene layerManager];
                 NSArray *layers = [layerManager layers];
+                layerCount = [layers count];
                 for (id layer in layers) {
                     if ([container respondsToSelector:@selector(_createHostViewForLayer:)]) {
                         UIView *hostView = [container _createHostViewForLayer:layer];
@@ -170,10 +194,12 @@
                 }
             }
             container.frame = [UIScreen mainScreen].bounds;
+            MWLog(@"MWSH", @"createHost %@ container=yes layers=%lu", identifier, (unsigned long)layerCount);
             return container;
         }
     }
 
+    MWLog(@"MWSH", @"createHost %@ NO container", identifier);
     return nil;
 }
 

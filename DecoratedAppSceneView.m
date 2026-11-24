@@ -2,6 +2,7 @@
 #import "AppSceneViewController.h"
 #import "UIKitPrivate+MultitaskSupport.h"
 #import "PiPManager.h"
+#import "MWLog.h"
 #import <objc/runtime.h>
 
 @interface RBSTarget : NSObject
@@ -61,6 +62,9 @@ void UIKitFixesInit(void) {
     // and QQ as a blank window.
     self.intendedContentFrame = CGRectMake(0, 0, self.contentView.bounds.size.width, self.contentView.bounds.size.height);
     self.lastSyncedContentSize = self.intendedContentFrame.size;
+    // LOG (1.0.2): what size did we capture at init, before didSelectRow
+    // shrinks this window to the tapped cell frame?
+    MWLog(@"DASV", @"init %@ self=%@ content=%@ intended=%@", windowName, NSStringFromCGRect(self.frame), NSStringFromCGRect(self.contentView.bounds), NSStringFromCGRect(self.intendedContentFrame));
     NSArray *menuItems = @[
         [UIAction actionWithTitle:@"复制进程号" image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil handler:^(UIAction * _Nonnull action) {
             UIPasteboard.generalPasteboard.string = @(self.pid).stringValue;
@@ -105,6 +109,10 @@ void UIKitFixesInit(void) {
     }];
     
     [transaction setCompletionBlock:^{
+        // LOG (1.0.2): what is the window/content size NOW (after the 0.4s
+        // open animation may have shrunk it), and what frame goes into the
+        // scene creation? Compare with the init line above.
+        MWLog(@"DASV", @"launchDone %@ self.frame=%@ content.bounds=%@ intended=%@", windowName, NSStringFromCGRect(self.frame), NSStringFromCGRect(self.contentView.bounds), NSStringFromCGRect(self.intendedContentFrame));
         // FIX (1.0.1): create the scene at the intended final content size,
         // not the transient contentView.bounds (see initWithApp above).
         AppSceneViewController* appSceneView = [[AppSceneViewController alloc] initWithApp:app frame:self.intendedContentFrame delegate:self];
@@ -112,8 +120,8 @@ void UIKitFixesInit(void) {
         appSceneView.view.layer.position = CGPointMake(0, 0);
         self.appSceneView = appSceneView;
         self.pid = appSceneView.pid;
-        NSLog(@"Presenting app scene from PID %d", self.pid);
         [self.contentView insertSubview:appSceneView.view atIndex:0];
+        MWLog(@"DASV", @"presented %@ pid=%d view.frame=%@ content.bounds=%@", windowName, self.pid, NSStringFromCGRect(appSceneView.view.frame), NSStringFromCGRect(self.contentView.bounds));
         if(@available(iOS 16.0, *)) {} else {
             [self iOS15SetupTitleMenu:menuItems];
         }
@@ -139,6 +147,8 @@ void UIKitFixesInit(void) {
     CGSize size = self.contentView.bounds.size;
     if (fabs(size.width - self.lastSyncedContentSize.width) > 0.5 ||
         fabs(size.height - self.lastSyncedContentSize.height) > 0.5) {
+        // LOG (1.0.2): did the re-sync fire at all, and from what size to what?
+        MWLog(@"DASV", @"layoutSync size=%@ last=%@ scale=%.2f", NSStringFromCGSize(size), NSStringFromCGSize(self.lastSyncedContentSize), self.scaleRatio);
         self.lastSyncedContentSize = size;
         [self.appSceneView resizeWindowWithFrame:CGRectMake(0, 0, size.width / self.scaleRatio, size.height / self.scaleRatio)];
     }
@@ -148,6 +158,7 @@ void UIKitFixesInit(void) {
 // selector, which did not exist, so drag-resizes never updated the scene.
 - (void)refreshHostedSceneAfterResize {
     CGSize size = self.contentView.bounds.size;
+    MWLog(@"DASV", @"refreshAfterResize content=%@ scale=%.2f", NSStringFromCGRect(self.contentView.bounds), self.scaleRatio);
     self.lastSyncedContentSize = size;
     [self.appSceneView resizeWindowWithFrame:CGRectMake(0, 0, size.width / self.scaleRatio, size.height / self.scaleRatio)];
 }
@@ -241,6 +252,9 @@ void UIKitFixesInit(void) {
 - (void)resizeWindow:(UIPanGestureRecognizer*)sender {
     [super resizeWindow:sender];
     CGSize size = self.contentView.bounds.size;
+    if (sender.state == UIGestureRecognizerStateEnded || sender.state == UIGestureRecognizerStateCancelled) {
+        MWLog(@"DASV", @"resizeWindow end content=%@ scale=%.2f", NSStringFromCGRect(self.contentView.bounds), self.scaleRatio);
+    }
     [self.appSceneView resizeWindowWithFrame:CGRectMake(0, 0, size.width / _scaleRatio, size.height / _scaleRatio)];
 
     // 拖动缩放不再自动进入画中画/回桌面：搬走 appSceneView.view 会让分屏
